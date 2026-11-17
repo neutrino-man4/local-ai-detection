@@ -16,6 +16,7 @@ detector/   models.py (registry), mesmer.py (CPU wrapper with per-window cache),
             segments.py (paragraphs, paragraph scores, rewrite invariant checks),
             documents.py (JSON reports used by the MCP tools)
 mcp_server/ server.py (MCP stdio server for Claude Code), cli.py (same tools on the command line)
+skills/     humanize-loop (Claude Code skill: SKILL.md, references/rewrite-rules.md)
 server/     serve.py (local web server) and web/index.html (UI)
 tests/      unit tests (segments) and model tests (mesmer)
 docs/       design notes and plans
@@ -46,6 +47,25 @@ Run from the repository root.
 python -m server.serve                          # GUI at http://127.0.0.1:8765
 python -m mcp_server.cli score draft.md         # tool output from the command line
 python -m unittest discover -s tests -t .       # tests (model tests take about a minute)
+```
+
+## /humanize-loop skill for Claude Code
+
+`skills/humanize-loop/` drives detector-guided rewriting through the MCP tools below:
+
+1. score the document;
+2. rewrite the worst paragraphs following `references/rewrite-rules.md`;
+3. score each candidate in place;
+4. keep only measurable improvements that preserve content;
+5. repeat until the verdict is human or progress stops;
+6. report, and ask before writing `<stem>.humanized.<ext>`.
+
+It works on Markdown, plain text and LaTeX (prose paragraphs only).
+
+```
+ln -s ~/npu_models/skills/humanize-loop ~/.claude/skills/humanize-loop   # install once
+/humanize-loop paper.tex                                                 # in Claude Code
+/humanize-loop draft.md target=clean max_passes=6
 ```
 
 ## MCP server for Claude Code
