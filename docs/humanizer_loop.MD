@@ -50,7 +50,7 @@ reviewable.
   +-----------+-------------------------------+
               | MCP (stdio, local only)
   +-----------v-------------------------------+
-  |  mesmer MCP server (conda env "mesmer")   |
+  |  mesmer MCP server (env "mesmer-mcp")     |
   |    score_document   score_candidate       |
   |    check_invariants                       |
   |    window cache (keyed by token ids)      |
@@ -123,11 +123,16 @@ The behaviour after an edit is as follows.
 
 ### 4.3 Environment and registration
 
-- **Dedicated conda env** `mesmer`: Python 3.12, CPU torch, numpy, tokenizers,
-  safetensors, emoji, mcp. Keep it out of the Ryzen AI venv, whose pins the `mcp`
+- **Dedicated conda env** `mesmer-mcp` (created): Python 3.12.16, torch 2.15.0+cpu,
+  numpy 2.5.5, tokenizers 0.23.3, safetensors 0.8.0, emoji 2.16.0,
+  huggingface-hub 2.4.0, mcp 2.3.0. All 17 tests pass in it, and scores match the
+  Ryzen AI venv (torch 2.10) to 4 decimals.
+- **mcp 2.x API:** `FastMCP` was renamed `MCPServer`
+  (`from mcp.server.mcpserver import MCPServer`).
+- Keep the env separate from the Ryzen AI venv, whose pins the `mcp`
   dependencies could disturb.
 - **Registration:**
-  `claude mcp add mesmer --scope user -- ~/miniconda3/envs/mesmer/bin/python ~/npu_models/mcp_server/server.py`
+  `claude mcp add mesmer --scope user -- ~/miniconda3/envs/mesmer-mcp/bin/python ~/npu_models/mcp_server/server.py`
 - **Timeouts:** long documents need a raised tool timeout (`MCP_TOOL_TIMEOUT`, in
   milliseconds). The variable name is assumed from memory and must be verified
   against the current Claude Code documentation.
@@ -140,7 +145,7 @@ The behaviour after an edit is as follows.
   share it), plus the per-window forward-pass cache.
 - `detector/segments.py`: paragraph splitting, sentence-to-paragraph mapping,
   invariant extraction.
-- `mcp_server/server.py`: FastMCP tool definitions only.
+- `mcp_server/server.py`: `MCPServer` tool definitions only.
 - The wrapper calls the authors' module at runtime (`Detector`, `split_units`,
   `normalize_units`, the forward pass) and does not copy its code into this
   repository. If any of their code has to be modified and copied, that file must
@@ -316,7 +321,7 @@ needed for interactive use.
 
 1. **Shared code:** `detector/mesmer.py` (move `MesmerDetector`), lazy ONNX imports in
    `server/serve.py`, and `detector/segments.py`. Tests 1-5.
-2. **MCP server:** `mcp_server/server.py`, conda env `mesmer`, registration, timeout
+2. **MCP server:** `mcp_server/server.py`, conda env `mesmer-mcp` (created), registration, timeout
    setting. Test 6. Manual check with `/mcp` in Claude Code.
 3. **Skill:** `.claude/skills/humanize-loop/SKILL.md` with the procedure in section 5.
    Tests 7-9.
