@@ -5,7 +5,12 @@ VitisAI execution provider) or on the CPU. Includes a browser GUI served on `127
 only. Texts of any length are split into overlapping windows and combined by
 token-weighted mean.
 
-Current model: [`fakespot-ai/roberta-base-ai-text-detection-v1`](https://huggingface.co/fakespot-ai/roberta-base-ai-text-detection-v1).
+Models (`--model`):
+
+| Name | Hugging Face model | Window |
+|---|---|---|
+| `fakespot` | [`fakespot-ai/roberta-base-ai-text-detection-v1`](https://huggingface.co/fakespot-ai/roberta-base-ai-text-detection-v1) | 512 tokens |
+| `vanguard` | [`ShantanuT01/vanguard-ai-text-detector`](https://huggingface.co/ShantanuT01/vanguard-ai-text-detector) | 1024 tokens |
 
 ## Layout
 
