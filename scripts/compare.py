@@ -2,7 +2,7 @@
 Score texts with a registered detector model on the CPU and on the Ryzen AI NPU, and
 compare the AI probability and latency per text. Long texts are split into overlapping
 windows and combined by length-weighted mean.
-Run from the repository root: python -m scripts.compare --model fakespot "text" ...
+Run from the repository root: python -m scripts.compare --model <onnx model> "text" ...
 
 Author: Aritra Bal (ITP)
 Date: 2026-11-17
@@ -26,7 +26,7 @@ DEFAULT_TEXTS: list[str] = [
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("texts", nargs="*", help="Texts to classify (defaults to two samples)")
-    parser.add_argument("--model", choices=sorted(MODELS), default="fakespot")
+    parser.add_argument("--model", required=True, choices=sorted(n for n, s in MODELS.items() if s.backend == "onnx"))
     args = parser.parse_args()
     spec = MODELS[args.model]
     texts = args.texts or DEFAULT_TEXTS
