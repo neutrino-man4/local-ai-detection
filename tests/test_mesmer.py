@@ -47,6 +47,13 @@ class MesmerCache(unittest.TestCase):
         cls.det = MesmerDetector(SPEC)
         cls.long = _long_document()
 
+    @classmethod
+    def tearDownClass(cls) -> None:
+        import gc
+
+        del cls.det  # free the model (about 8 GB) before other test modules load theirs
+        gc.collect()
+
     def _reference(self, text: str) -> dict:
         """Result through the unwrapped forward pass."""
         self.det.use_cache = False
