@@ -182,7 +182,7 @@ The text must never overlap the ring stroke.
 ## 7. Usage (after implementation)
 
 ```
-ryzenai-gui                # or: ryzenai-gui --cpu
+humanize-gui               # or: humanize-gui --port 9000
 ```
 
 Then open `http://127.0.0.1:8765` in a browser.
