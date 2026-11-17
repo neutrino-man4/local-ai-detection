@@ -58,6 +58,7 @@ class ParagraphScores(unittest.TestCase):
         # visible characters: 5 and 11, so involvement = (5 * 0.1 + 11 * 1.0) / 16
         self.assertAlmostEqual(scores[0]["involvement"], (5 * 0.1 + 11 * 1.0) / 16)
         self.assertEqual(scores[0]["flagged"], 1)
+        self.assertEqual([s["sentences"] for s in scores], [2, 1])
         self.assertEqual(scores[0]["worst"], "Bbbbbbbbbb.")
         self.assertEqual((scores[1]["involvement"], scores[1]["flagged"], scores[1]["line"]), (0.0, 0, 3))
 
