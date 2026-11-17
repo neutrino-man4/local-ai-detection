@@ -13,7 +13,9 @@ Models (`--model`):
 
 ```
 detector/   models.py (registry), mesmer.py (CPU wrapper with per-window cache),
-            segments.py (paragraphs, paragraph scores, rewrite invariant checks)
+            segments.py (paragraphs, paragraph scores, rewrite invariant checks),
+            documents.py (JSON reports used by the MCP tools)
+mcp_server/ server.py (MCP stdio server for Claude Code), cli.py (same tools on the command line)
 server/     serve.py (local web server) and web/index.html (UI)
 tests/      unit tests (segments) and model tests (mesmer)
 docs/       design notes and plans
@@ -42,7 +44,26 @@ Run from the repository root.
 
 ```
 python -m server.serve                          # GUI at http://127.0.0.1:8765
+python -m mcp_server.cli score draft.md         # tool output from the command line
 python -m unittest discover -s tests -t .       # tests (model tests take about a minute)
+```
+
+## MCP server for Claude Code
+
+`mcp_server/server.py` exposes three tools over stdio. They take file paths and return
+compact JSON:
+
+| Tool | Purpose |
+|---|---|
+| `score_document` | verdict, AI involvement, probabilities; per-paragraph (and optionally per-sentence) scores |
+| `score_candidate` | score a rewrite of one paragraph in place, without modifying the file, including an invariant check |
+| `check_invariants` | check that a rewrite preserves numbers, citations, maths, code, URLs, quotations and structure |
+
+Register it once (user scope):
+
+```
+claude mcp add mesmer --scope user -- ~/miniconda3/envs/mesmer-mcp/bin/python ~/npu_models/mcp_server/server.py
+claude mcp list      # mesmer: ... - Connected
 ```
 
 Mesmer windows long texts itself (whole sentences, up to 1,023 tokens per window,
