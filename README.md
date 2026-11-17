@@ -25,9 +25,13 @@ imported at runtime; it is not part of this repository.
 
 ## Setup
 
-Python 3.12 with torch (CPU), numpy, tokenizers, safetensors and emoji, then:
+Python 3.12 with torch (CPU), numpy, tokenizers, safetensors, emoji, huggingface_hub
+and mcp, for example in a conda env:
 
 ```
+conda create -n mesmer-mcp python=3.12 && conda activate mesmer-mcp
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install numpy tokenizers safetensors emoji huggingface_hub mcp
 hf download mesmertech/mesmer-ai-detector-4b --local-dir artifacts/mesmer4b/hf \
     --include "*.json" "model.safetensors" "mesmer_detector.py"
 ```
