@@ -7,7 +7,8 @@ Mesmer MCP server. The loop continues until the document meets a target or stops
 improving.
 
 Date: 2026-11-17
-Status: phases 1-2 implemented and the MCP server is registered (section 4.4). Phases 3-5 not started.
+Status: phases 1-3 implemented. The MCP server is registered (section 4.4) and the
+`/humanize-loop` skill is installed (section 5.4). Phases 4-5 not started.
 
 ## 1. Goal and non-goals
 
@@ -228,7 +229,9 @@ so it is repeatable and does not depend on re-explaining it each session.
      fixes prose patterns instead of chasing numbers.
 3. **Gate.**
    - Run `check_invariants` on every candidate and discard failures.
-   - Discard candidates that change the paragraph's word count by more than ±25%.
+   - Discard candidates more than 25% longer than the original. Shorter is allowed when
+     the removed words are rule-listed puffery; the planned ±25% limit wrongly rejected
+     valid puffery cuts in the phase 3 dry run (section 5.4).
 4. **Score.**
    - `score_candidate` for each surviving candidate.
    - Accept the best one if it lowers the paragraph's involvement by at least
@@ -269,6 +272,55 @@ to write, while scoring with the cache takes about 1-6 s.
 - **To verify:** whether subagents inherit access to the MCP tools. They do not need
   it in this design.
 
+### 5.4 As implemented (phase 3)
+
+- **Location:** `skills/humanize-loop/` in this repository (`SKILL.md` and
+  `references/rewrite-rules.md`), symlinked to `~/.claude/skills/humanize-loop`, so it
+  works on documents in any folder.
+- **Decisions (user):**
+  - default target `verdict`;
+  - autonomous passes, then a report and diff;
+  - before writing, ask the user, offering `<stem>.humanized.<ext>` (recommended),
+    replacing the original, or keeping the result only in the run folder;
+  - formats: Markdown, plain text and LaTeX (prose paragraphs only).
+- **Rewrite rules:** built into the skill. Sections 1-5 and 7 are condensed from the
+  humanize-text skill (Wikipedia "Signs of AI writing" catalogue and the owner's house
+  rules). Section 6 is new, built on the article's "Signs of human writing" (Syntax):
+  - simple is/has phrases;
+  - plain verbs;
+  - definitive statements only where the facts support them;
+  - meant qualifiers;
+  - occasional ordinary wordiness;
+  - explainable edits;
+  - content-driven rhythm;
+  - consistent terms.
+- **Other humanizer skills retired** at the user's request:
+  - `academic-humanizer` and `humanizer` moved to `~/.claude/skills-archive/`;
+  - the `/humanize` command moved to `~/.claude/commands-archive/`;
+  - the synced `humanize-text` hidden through `skillOverrides` in
+    `~/.claude/settings.json` (it must also be turned off on claude.ai).
+
+  A fresh Claude Code process loads `humanize-loop` and none of the four.
+- **Dry run against the live MCP tools:**
+  - **Human text left alone:** a genuinely human, pre-2022 text (GPL v3 preamble)
+    scored verdict "human" (33.6% involvement, no flagged sentences), so the loop stops
+    at the baseline.
+  - **One pass on an AI-styled 3-paragraph draft:** flagged sentences went 3 -> 0 and
+    document involvement 100% -> 77.4% (verdict still "ai"). Facts, numbers and the
+    citation were preserved.
+  - **Rejection rules worked:** one candidate was correctly rejected for flagging 2
+    sentences elsewhere and raising document involvement. An invariant probe caught a
+    changed number and a dropped citation.
+  - **Self-written fixture:** the "human" fixture written by Claude scored 100% AI,
+    which is correct. Test fixtures must be genuinely human text.
+- **Changes from the plan:**
+  - length gate (section 5.2 step 3);
+  - candidates are scored and applied one at a time, in descending paragraph id, so
+    each is scored against the current text;
+  - hard-wrapped sources: Mesmer splits units at line breaks, so in such files sentence
+    labels refer to lines;
+  - paragraphs under 15 words, or with `sentences: 0`, are skipped.
+
 ## 6. Meaning preservation
 
 Deterministic checks in `check_invariants`. A candidate must preserve every protected
@@ -303,8 +355,8 @@ other detectors still flag.
   used in the loop. For example, re-add Vanguard or Fakespot as CPU ONNX models;
   their exports are deleted but can be regenerated with `scripts/export.py`. Report
   both scores and never feed the hold-out score back into the loop.
-- **Bounded edits:** the ±25% length gate and the invariants limit how far the text
-  can drift.
+- **Bounded edits:** the length gate (at most 25% longer; shorter only through
+  rule-listed cuts) and the invariants limit how far the text can drift.
 - **Skill-defined edits only:** the skills target documented AI-writing tells (stock
   vocabulary, inflated significance, rule-of-three, em dashes, uniform rhythm). Those
   are real quality improvements, not detector artefacts.
@@ -363,8 +415,10 @@ needed for interactive use.
    `server/serve.py`, and `detector/segments.py`. Tests 1-5.
 2. **MCP server (done):** `mcp_server/server.py`, conda env `mesmer-mcp`, registration
    (no timeout setting needed). Tests 3 and 6.
-3. **Skill:** `.claude/skills/humanize-loop/SKILL.md` with the procedure in section 5.
-   Tests 7-9.
+3. **Skill (done):** `skills/humanize-loop/` (symlinked into `~/.claude/skills`), with
+   the procedure in section 5. Tests 7 and 8 done as a dry run (section 5.4). Test 9
+   (revert) is not exercised yet, because sequential scoring made it unnecessary in the
+   dry run.
 4. **Optional:** the parallel variant (section 5.3) and the hold-out detector
    (section 7).
 5. **Study:** tests 10-12, then tune `per_pass`, `candidates` and the acceptance margin.
