@@ -1,6 +1,6 @@
 """
-Shared code for local AI-text detection: model registry, text chunking and
-weighting, and ONNX Runtime sessions on CPU or the Ryzen AI NPU.
+Shared code for local AI-text detection: model registry, the CPU Mesmer wrapper with
+its per-window cache, and paragraph-level helpers for detector-guided rewriting.
 
 Author: Aritra Bal (ITP)
 Date: 2026-11-17
