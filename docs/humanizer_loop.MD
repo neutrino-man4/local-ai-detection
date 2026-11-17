@@ -7,7 +7,7 @@ Mesmer MCP server. The loop continues until the document meets a target or stops
 improving.
 
 Date: 2026-11-17
-Status: plan only, nothing implemented.
+Status: phase 1 implemented (`detector/mesmer.py`, `detector/segments.py`, tests). Phases 2-5 not started.
 
 ## 1. Goal and non-goals
 
@@ -82,7 +82,7 @@ The original file is never overwritten automatically.
 |---|---|---|---|
 | `score_document` | `path`, `detail` = `summary` / `paragraphs` / `sentences` | verdict, ai_involvement, probs, flagged_fraction, words; per paragraph: id, line range, words, involvement, flagged sentence count, worst sentence (first 80 characters) | one pass over changed windows (cache) |
 | `score_candidate` | `path`, `paragraph_id`, `candidate_text` | the paragraph's involvement and sentence labels **in place**, plus the projected document verdict, without modifying the file | only windows touched by the substitution |
-| `check_invariants` | `original_text`, `candidate_text` | pass/fail plus a list of differences in protected items (section 6) | milliseconds, pure Python |
+| `check_invariants` | `original_text`, `candidate_text` | errors (reject) and warnings (judge) listing differences in protected items (section 6) | milliseconds, pure Python |
 
 Paragraphs are blank-line-separated blocks of the document. A paragraph's score is
 the character-weighted mean of 1 - p_human over its sentences. Paragraph ids are
@@ -90,11 +90,19 @@ indices, kept stable by the invariant that rewrites never merge or split paragra
 
 ### 4.2 Window cache (the key efficiency measure)
 
-- Re-implement the window construction of `analyze()` (same sentence splitting,
-  normalisation, 1,023-token limit, 256-token context) in our wrapper. Score windows
-  through the model's forward pass.
-- Cache each window's outputs (document logits and sentence probabilities) keyed by
-  a hash of its token ids.
+As implemented, the cache works differently from the original plan, which was to
+re-implement the window construction:
+
+- The authors' `analyze()` is used unchanged, with one window per forward pass
+  (`budget = 1`).
+- Only their per-window forward pass (`_forward_both`) is wrapped, and its outputs
+  (document logits and sentence logits) are cached. The key is a hash of the window's
+  token ids, length and sentence boundaries, which are the forward pass's only
+  inputs.
+- Cached results are therefore identical to uncached ones by construction (tested),
+  and none of the authors' code is copied.
+
+The behaviour after an edit is as follows.
 - After a local edit, the windows before it are byte-identical and come from the
   cache. Only the edited window, and any later windows whose boundaries shift, are
   recomputed.
@@ -104,7 +112,14 @@ indices, kept stable by the invariant that rewrites never merge or split paragra
   includes the bidirectional sentence head, so the result equals a full re-score
   (verified by a test, section 9).
 - **Expected cost per candidate:** 1-2 windows, about 1-6 s on this CPU, instead of
-  scoring the whole document.
+  scoring the whole document, but only for edits in the last window.
+- **Measured** on a 2-window document: cold scoring 11.5 s, unchanged re-score
+  0.01 s, edit in the last paragraph 5.2 s (1 window recomputed, 1 cached).
+  Editing the first paragraph took 11.3 s: Mesmer packs whole sentences into windows
+  from the start, so a token-count change shifts every later window boundary and all
+  later windows are recomputed. For long documents, `score_candidate` costs about as
+  much as scoring from the edited paragraph to the end. Phase 2 should process
+  paragraphs back to front where possible.
 
 ### 4.3 Environment and registration
 
@@ -122,7 +137,7 @@ indices, kept stable by the invariant that rewrites never merge or split paragra
 ### 4.4 Code layout and licence
 
 - `detector/mesmer.py`: `MesmerDetector` moved out of `server/serve.py` (GUI and MCP
-  share it), plus the windowing-with-cache wrapper.
+  share it), plus the per-window forward-pass cache.
 - `detector/segments.py`: paragraph splitting, sentence-to-paragraph mapping,
   invariant extraction.
 - `mcp_server/server.py`: FastMCP tool definitions only.
@@ -221,7 +236,7 @@ item, as a multiset where applicable:
 | Mathematics | `$...$`, `\(...\)`, `\[...\]`, LaTeX environments, unchanged byte for byte |
 | Code and URLs | backtick spans, fenced blocks, `http(s)://` |
 | Quotations | text inside quotation marks, unchanged |
-| Proper nouns and acronyms | capitalised tokens not at sentence start, ALL-CAPS tokens; set must be preserved, order may change |
+| Proper nouns and acronyms | capitalised words other than a sentence's first word, ALL-CAPS words; compared as a set. **Warning only**: moving a name to a sentence start hides it from the heuristic, so a difference needs judgement rather than rejection |
 | Structure | paragraph count, list items, headings, LaTeX commands outside prose |
 
 On top of the deterministic gate:
