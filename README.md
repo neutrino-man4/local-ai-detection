@@ -1,36 +1,48 @@
 # local-ai-detection
 
-Local AI-generated-text detection, running on the AMD Ryzen AI NPU (BF16, ONNX Runtime
-VitisAI execution provider) or on the CPU. Includes a browser GUI served on `127.0.0.1`
-only. Texts of any length are split into overlapping windows and combined by
-token-weighted mean.
+Local AI-generated-text detection with a browser GUI served on `127.0.0.1` only.
+Supports ONNX models on the AMD Ryzen AI NPU (BF16, ONNX Runtime VitisAI execution
+provider) or CPU, and Mesmer models on the CPU through the authors' reference code.
 
 Models (`--model`):
 
-| Name | Hugging Face model | Window |
-|---|---|---|
-| `fakespot` | [`fakespot-ai/roberta-base-ai-text-detection-v1`](https://huggingface.co/fakespot-ai/roberta-base-ai-text-detection-v1) | 512 tokens |
-| `vanguard` | [`ShantanuT01/vanguard-ai-text-detector`](https://huggingface.co/ShantanuT01/vanguard-ai-text-detector) | 1024 tokens |
+| Name | Hugging Face model | Runs on | Output |
+|---|---|---|---|
+| `mesmer4b` | [`mesmertech/mesmer-ai-detector-4b`](https://huggingface.co/mesmertech/mesmer-ai-detector-4b) (CC BY-NC-SA 4.0) | CPU | human / ai / ai_edited, calibrated verdict, per-sentence labels |
+
+No ONNX models are registered at present; the NPU code path is kept for future ports.
 
 ## Layout
 
 ```
-detector/   shared code: model registry, chunking/weighting, CPU/NPU sessions
-scripts/    export.py (model -> static ONNX), compare.py (CPU vs NPU)
+detector/   shared code: model registry, chunking/weighting, CPU/NPU sessions for ONNX models
+scripts/    export.py (model -> static ONNX), compare.py (CPU vs NPU); ONNX models only
 server/     serve.py (local web server) and web/index.html (UI)
 docs/       design notes
-artifacts/  generated: downloads, ONNX model, tokenizer (not tracked)
+artifacts/  generated: downloads, ONNX models, tokenizers (not tracked)
+```
+
+## Setup (Mesmer 4B)
+
+Requires the Ryzen AI 1.9 venv (`ryzenai` shell function) and the `emoji` package.
+
+```
+pip install --no-deps emoji
+hf download mesmertech/mesmer-ai-detector-4b --local-dir artifacts/mesmer4b/hf \
+    --include "*.json" "model.safetensors" "mesmer_detector.py"
 ```
 
 ## Usage
 
-Requires the Ryzen AI 1.9 software (XRT + venv). Run all commands from the repository
-root, inside the Ryzen AI environment (`ryzenai` shell function).
+Run from the repository root, inside the Ryzen AI environment.
 
 ```
-python -m scripts.export --model fakespot     # once: download and export to ONNX
-python -m scripts.compare "some text"         # CPU vs NPU scores
-python -m server.serve [--cpu]                # GUI at http://127.0.0.1:8765
+python -m server.serve                        # GUI at http://127.0.0.1:8765
 ```
+
+Mesmer windows long texts itself (whole sentences, up to 1,023 tokens per window,
+256 tokens of context); the server runs one window per batch to avoid padding cost on
+the CPU. The GUI ring shows AI involvement (1 - P(human)) with Mesmer's calibrated
+verdict, and shades each sentence by its label.
 
 Scores are statistical estimates, not proof of authorship.
