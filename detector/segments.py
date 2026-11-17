@@ -80,7 +80,8 @@ def paragraph_scores(text: str, sentences: list[dict]) -> list[dict]:
     """Per-paragraph scores from Mesmer sentences (dicts with start, end, text, label, p).
 
     involvement is the visible-character-weighted mean of 1 - P(human) over the
-    paragraph's sentences; flagged counts sentences whose label is not "human".
+    paragraph's sentences (0.0 when it owns none, for example a salutation joined to the
+    next sentence; check "sentences"); flagged counts sentences whose label is not "human".
     """
     paragraphs = paragraph_spans(text)
     owners = assign_sentences(text, paragraphs, [(s["start"], s["end"]) for s in sentences])
@@ -97,6 +98,7 @@ def paragraph_scores(text: str, sentences: list[dict]) -> list[dict]:
             "end": b,
             "line": text.count("\n", 0, a) + 1,
             "words": len(text[a:b].split()),
+            "sentences": len(mine),
             "involvement": involvement,
             "flagged": sum(s["label"] != "human" for s in mine),
             "worst": worst,
