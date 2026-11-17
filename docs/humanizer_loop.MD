@@ -112,7 +112,7 @@ indices, kept stable by the invariant that rewrites never merge or split paragra
   safetensors, emoji, mcp. Keep it out of the Ryzen AI venv, whose pins the `mcp`
   dependencies could disturb.
 - **Registration:**
-  `claude mcp add mesmer --scope user -- ~/miniconda3/envs/mesmer/bin/python /home/abal/npu_models/mcp_server/server.py`
+  `claude mcp add mesmer --scope user -- ~/miniconda3/envs/mesmer/bin/python ~/npu_models/mcp_server/server.py`
 - **Timeouts:** long documents need a raised tool timeout (`MCP_TOOL_TIMEOUT`, in
   milliseconds). The variable name is assumed from memory and must be verified
   against the current Claude Code documentation.
