@@ -48,7 +48,6 @@
     width: 143px; text-align: center;
   }
   .caption { font-size: 11px; line-height: 14px; color: var(--muted); margin-bottom: 4px; }
-  .caption:empty { display: none; }
   .pct { font-size: 44px; font-weight: 650; line-height: 1; font-variant-numeric: tabular-nums; }
   .pct small { font-size: 22px; font-weight: 600; margin-left: 1px; }
   .verdict { margin-top: 8px; font-size: 13px; line-height: 17px; color: var(--muted); }
@@ -148,19 +147,9 @@
     return `hsla(${h}, ${sat.toFixed(1)}%, ${l.toFixed(1)}%, ${alpha})`;
   }
 
-  // Mesmer returns its own calibrated verdict; ONNX models use the bands below
-  const MESMER_VERDICTS = { human: ["Human"], ai_edited: ["AI-edited"], ai: ["AI"] };
+  // Mesmer's calibrated verdicts and sentence labels; LABEL_SCORE places each on the ring colour scale
   const LABEL_NAMES = { human: "Human", ai: "AI", ai_edited: "AI-edited" };
-  const LABEL_SCORE = { human: 0, ai_edited: 60, ai: 100 };  // position on the ring colour scale
-
-  // Half-open bands on the displayed (floored) value, so the shown number and verdict always agree
-  function verdict(d) {
-    if (d < 10) return ["Human"];
-    if (d < 35) return ["Human with AI editing"];
-    if (d < 70) return ["Uncertain:", "AI with human editing"];
-    if (d < 90) return ["Mostly AI"];
-    return ["Fully AI"];
-  }
+  const LABEL_SCORE = { human: 0, ai_edited: 60, ai: 100 };
 
   const shown = (s) => Math.min(100, Math.max(0, Math.floor(s)));
 
@@ -194,21 +183,19 @@
   function renderRing(s, verdictKey, probs) {
     const d = shown(s);
     $("pct").innerHTML = `${d}<small>%</small>`;
-    $("result").querySelector(".ring").title = probs ? `AI involvement ${d}% (${pctText(probs)})` : "";
-    $("caption").textContent = verdictKey ? "AI involvement" : "";
-    const v = $("verdict");
-    const lines = verdictKey ? (MESMER_VERDICTS[verdictKey] || [verdictKey]) : verdict(d);
-    v.replaceChildren(...lines.map((line) => {
-      const el = document.createElement("span"); el.textContent = line; return el;
-    }));
+    $("result").querySelector(".ring").title = `AI involvement ${d}% (${pctText(probs)})`;
+    $("caption").textContent = "AI involvement";
+    const el = document.createElement("span");
+    el.textContent = LABEL_NAMES[verdictKey] || verdictKey;
+    $("verdict").replaceChildren(el);
     // Restart the animation from an empty ring on every result
     arc.style.transition = "none";
     arc.style.strokeDashoffset = CIRC;
     arc.style.opacity = s < 0.5 ? 0 : 1;
     arc.getBoundingClientRect();
     arc.style.transition = "";
-    // A calibrated verdict sets the colour, so a high number below the flagging threshold stays green
-    arc.style.stroke = scoreColor(verdictKey ? (LABEL_SCORE[verdictKey] ?? s) : s);
+    // The calibrated verdict sets the colour, so a high number below the flagging threshold stays green
+    arc.style.stroke = scoreColor(LABEL_SCORE[verdictKey] ?? s);
     arc.style.strokeDashoffset = CIRC * (1 - Math.min(100, s) / 100);
   }
 
@@ -216,14 +203,10 @@
     shaded.replaceChildren(...segments.map((seg) => {
       const el = document.createElement("span");
       el.textContent = seg.text;
+      // Sentences are tinted by label with probabilities on hover; gaps between them stay plain
       if (seg.label) {
-        // Per-sentence label from the model: tint by label, probabilities on hover
-        const score = LABEL_SCORE[seg.label] ?? seg.ai_percent;
-        el.style.backgroundColor = scoreColor(score, seg.label === "human" ? 0.18 : 0.34);
+        el.style.backgroundColor = scoreColor(LABEL_SCORE[seg.label] ?? seg.ai_percent, seg.label === "human" ? 0.18 : 0.34);
         el.title = `Sentence: ${LABEL_NAMES[seg.label] || seg.label} (${pctText(seg.probs)})`;
-      } else if (seg.ai_percent !== undefined) {
-        el.style.backgroundColor = scoreColor(seg.ai_percent, seg.ai_percent >= 70 ? 0.34 : 0.18);
-        el.title = `Segment: ${shown(seg.ai_percent)}% AI`;
       }
       return el;
     }));
