@@ -7,7 +7,7 @@ Mesmer MCP server. The loop continues until the document meets a target or stops
 improving.
 
 Date: 2026-11-17
-Status: phase 1 implemented (`detector/mesmer.py`, `detector/segments.py`, tests). Phases 2-5 not started.
+Status: phases 1-2 implemented and the MCP server is registered (section 4.4). Phases 3-5 not started.
 
 ## 1. Goal and non-goals
 
@@ -36,7 +36,7 @@ reviewable.
 | Sentence flagged when 1 - p_human >= 0.8696. Document "ai" if p_ai >= p_ai_edited and p_ai + 0.5 p_ai_edited >= 0.6084. Otherwise "ai_edited" if 1 - p_human >= 0.907. Otherwise "human". | `policy.json` | Targets should use these calibrated rules, not raw probabilities. |
 | Results are unreliable below about 50 words. | Model card | Never score or rewrite tiny segments on their own. Paragraphs are the unit. |
 | CPU cost: about 5.1 s per full 1,024-token window, 6.6 s for 1,040 tokens with one window per batch. Shorter windows cost proportionally less. | Measured on this machine | Re-scoring the whole document after every candidate is too slow for long texts. Caching per window is needed (section 4.2). |
-| Mesmer weights and code are CC BY-NC-SA 4.0. | Model card | Non-commercial use. Any modified copy of `mesmer_detector.py` code inherits the licence, so keep wrappers separate (section 4.4). |
+| Mesmer weights and code are CC BY-NC-SA 4.0. | Model card | Non-commercial use. Any modified copy of `mesmer_detector.py` code inherits the licence, so keep wrappers separate (section 4.5). |
 
 ## 3. Architecture
 
@@ -133,13 +133,53 @@ The behaviour after an edit is as follows.
   dependencies could disturb.
 - **Registration:**
   `claude mcp add mesmer --scope user -- ~/miniconda3/envs/mesmer-mcp/bin/python ~/npu_models/mcp_server/server.py`
-- **Timeouts:** long documents need a raised tool timeout (`MCP_TOOL_TIMEOUT`, in
-  milliseconds). The variable name is assumed from memory and must be verified
-  against the current Claude Code documentation.
+- **Timeouts:** no setting is needed. This was verified against the Claude Code
+  environment-variable reference:
+  - **`MCP_TOOL_TIMEOUT`** defaults to about 28 hours, and stdio servers have no
+    per-request timer.
+  - **`CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`** defaults to 30 minutes for stdio servers and
+    only fires when the server sends nothing at all.
+  - **`CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS`:** calls running longer than 2 minutes move
+    to a background task automatically. This matters only for very long documents.
+  - **`MCP_TIMEOUT`:** server start-up must finish within 30 s, which is why the model
+    loads lazily on the first call.
+- **Output size:** Claude Code warns above 10,000 tokens (`MAX_MCP_OUTPUT_TOKENS`,
+  default 25,000) and saves text results over 50,000 characters to a file. The tools
+  therefore return single-line JSON and cap lists at `max_items`. Measured on an
+  18-paragraph document: about 80 tokens (summary), 850 (paragraphs), 4,500
+  (sentences).
 - **Logs:** the model loads on the first tool call and stays resident. Log to stderr
-  only, because stdout carries the MCP protocol.
+  only. The mcp 2.x stdio transport also takes over file descriptor 1 and sends
+  anything else written to stdout to stderr, so stray prints cannot corrupt the
+  protocol.
 
-### 4.4 Code layout and licence
+### 4.4 As implemented (phase 2)
+
+- **`detector/documents.py`:** `document_report`, `candidate_report` and
+  `invariants_report`, plain functions testable without MCP.
+- **`mcp_server/server.py`:** three tools wrapping those functions, with lazy model
+  loading, one lock (sync tools run in worker threads) and compact JSON.
+  - **`score_candidate`** also includes the invariant check of the candidate against
+    the original paragraph, which saves one call per candidate.
+  - **Paragraphs owning no sentence** (for example a salutation that Mesmer joined
+    to the next sentence) report `sentences: 0` and `involvement: null`, not 0.
+- **`mcp_server/cli.py`:** the same tools from the command line, for manual checks:
+  `python -m mcp_server.cli score|candidate|invariants ...`.
+- **Registration:** registered at user scope; `claude mcp list` reports
+  `mesmer: ... - Connected`.
+- **Tests:** `tests/test_mcp_server.py` covers:
+  - the invariant tool, with and without a file;
+  - document-report consistency and truncation;
+  - a candidate scored through the tool equals the substituted document scored
+    directly;
+  - the source file is unchanged;
+  - cache reuse;
+  - error cases;
+  - an end-to-end stdio session against a spawned server process.
+
+  All 25 tests pass.
+
+### 4.5 Code layout and licence
 
 - `detector/mesmer.py`: `MesmerDetector` moved out of `server/serve.py` (GUI and MCP
   share it), plus the per-window forward-pass cache.
@@ -321,8 +361,8 @@ needed for interactive use.
 
 1. **Shared code:** `detector/mesmer.py` (move `MesmerDetector`), lazy ONNX imports in
    `server/serve.py`, and `detector/segments.py`. Tests 1-5.
-2. **MCP server:** `mcp_server/server.py`, conda env `mesmer-mcp` (created), registration, timeout
-   setting. Test 6. Manual check with `/mcp` in Claude Code.
+2. **MCP server (done):** `mcp_server/server.py`, conda env `mesmer-mcp`, registration
+   (no timeout setting needed). Tests 3 and 6.
 3. **Skill:** `.claude/skills/humanize-loop/SKILL.md` with the procedure in section 5.
    Tests 7-9.
 4. **Optional:** the parallel variant (section 5.3) and the hold-out detector
@@ -331,7 +371,6 @@ needed for interactive use.
 
 ## 11. Open questions
 
-- Exact Claude Code tool-timeout variable, and its maximum.
 - Whether subagents can call project MCP tools. The design above does not require it.
 - Whether to version `.humanize/` working folders or ignore them (proposal: add to
   `.gitignore`).
