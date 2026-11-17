@@ -1,7 +1,8 @@
 """
 Registry of supported detector models. Each entry fixes the Hugging Face model id,
-the static input length used for export, and how the output logits map to an AI
-probability. All artifact and cache paths are derived from the model name.
+the input length, and the backend: "onnx" models are exported to static-shape ONNX
+and run on the NPU or CPU, "mesmer" models run on the CPU through the authors'
+reference code. All artifact and cache paths are derived from the model name.
 
 Author: Aritra Bal (ITP)
 Date: 2026-11-17
@@ -21,16 +22,21 @@ class ModelSpec:
     Attributes:
         name: Short name used on the command line and in artifact paths.
         hf_id: Hugging Face model id.
-        seq_len: Fixed input length of the exported ONNX model, including special tokens.
-        head: "softmax2" for two-class logits, "sigmoid1" for a single AI logit.
-        ai_index: Index of the AI class in two-class logits (ignored for "sigmoid1").
+        seq_len: Window length in tokens, including special tokens (fixed ONNX input length for "onnx").
+        head: "softmax2" for two-class logits, "sigmoid1" for a single AI logit,
+            "softmax3" for human / ai / ai_edited (handled by the Mesmer reference code).
+        ai_index: Index of the AI class in two-class logits (ignored otherwise).
+        backend: "onnx" (exported model, NPU or CPU) or "mesmer" (reference code, CPU only).
+        label: Display name for the UI.
     """
 
     name: str
     hf_id: str
     seq_len: int
-    head: Literal["softmax2", "sigmoid1"]
+    head: Literal["softmax2", "sigmoid1", "softmax3"]
     ai_index: int = 0
+    backend: Literal["onnx", "mesmer"] = "onnx"
+    label: str = ""
 
     @property
     def max_tokens(self) -> int:
@@ -56,22 +62,22 @@ class ModelSpec:
         """Compiled NPU model cache, kept outside the project folder."""
         return Path.home() / ".cache" / "npu_models" / self.name
 
+    @property
+    def ready(self) -> bool:
+        """Whether the files needed to run the model are present."""
+        if self.backend == "mesmer":
+            return (self.hf_dir / "model.safetensors").exists() and (self.hf_dir / "mesmer_detector.py").exists()
+        return self.onnx_path.exists()
+
 
 MODELS: dict[str, ModelSpec] = {
-    # id2label in the model config is {0: "Human", 1: "AI"}
-    "fakespot": ModelSpec(
-        name="fakespot",
-        hf_id="fakespot-ai/roberta-base-ai-text-detection-v1",
-        seq_len=512,
-        head="softmax2",
-        ai_index=1,
-    ),
-    # Single sigmoid output P(AI) per the model card; training length is not documented,
-    # 1024 tokens covers the ~4096-character excerpts used in its training data
-    "vanguard": ModelSpec(
-        name="vanguard",
-        hf_id="ShantanuT01/vanguard-ai-text-detector",
+    # Weights, config, policy, tokenizer and mesmer_detector.py downloaded into artifacts/mesmer4b/hf
+    "mesmer4b": ModelSpec(
+        name="mesmer4b",
+        hf_id="mesmertech/mesmer-ai-detector-4b",
         seq_len=1024,
-        head="sigmoid1",
+        head="softmax3",
+        backend="mesmer",
+        label="Mesmer 4B",
     ),
 }
