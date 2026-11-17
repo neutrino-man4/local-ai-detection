@@ -84,6 +84,8 @@ def score_chunks(
         if spec.head == "softmax2":
             e = np.exp(logits - logits.max())
             ai_probs.append(e[spec.ai_index] / e.sum())
-        else:
+        elif spec.head == "sigmoid1":
             ai_probs.append(1.0 / (1.0 + np.exp(-logits[0])))
+        else:
+            raise ValueError(f"Head '{spec.head}' is not supported by the ONNX runtime")
     return np.array(ai_probs)
