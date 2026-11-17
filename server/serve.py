@@ -1,7 +1,8 @@
 """
 Local web interface for AI-text detection. Serves a single-page UI and a JSON scoring
-endpoint on 127.0.0.1 only. The model session is created once at startup (NPU by
-default, CPU with --cpu) and shared by all requests behind a lock.
+endpoint on 127.0.0.1 only. Every exported model can be chosen in the UI; the default
+model is loaded at startup and others on first use (NPU by default, CPU with --cpu).
+One lock serialises all scoring, so only one model uses the NPU at a time.
 Run from the repository root: python -m server.serve [--model fakespot] [--cpu]
 
 Author: Aritra Bal (ITP)
@@ -24,19 +25,17 @@ INDEX_HTML: bytes = (Path(__file__).resolve().parent / "web" / "index.html").rea
 
 
 class Detector:
-    """Holds the tokenizer and model session and scores texts one at a time."""
+    """Holds the tokenizer and model session of one model."""
 
     def __init__(self, spec: ModelSpec, use_npu: bool) -> None:
         self.spec = spec
         self.tokenizer = AutoTokenizer.from_pretrained(spec.onnx_dir)
         self.session = make_session(spec, npu=use_npu)
-        self.lock = threading.Lock()
 
     def score(self, text: str) -> dict:
         """Return the document AI percentage and the per-segment text and AI percentage."""
-        with self.lock:
-            chunks, weights = chunk_text(text, self.tokenizer, max_tokens=self.spec.max_tokens)
-            ai_probs = score_chunks(chunks, self.tokenizer, self.session, self.spec)
+        chunks, weights = chunk_text(text, self.tokenizer, max_tokens=self.spec.max_tokens)
+        ai_probs = score_chunks(chunks, self.tokenizer, self.session, self.spec)
         spans = owned_char_spans(text, self.tokenizer, max_tokens=self.spec.max_tokens)
         # Segment text rather than offsets: Python and JavaScript index strings differently
         segments = [{"text": text[s:e], "ai_percent": float(100 * p)} for (s, e), p in zip(spans, ai_probs)]
@@ -47,8 +46,28 @@ class Detector:
         }
 
 
-def make_handler(detector: Detector) -> type[BaseHTTPRequestHandler]:
-    """Build a request handler class bound to the given detector."""
+class DetectorPool:
+    """Exported models, loaded on first use and kept; one lock guards loading and scoring."""
+
+    def __init__(self, default: str, use_npu: bool) -> None:
+        self.available = [name for name, spec in MODELS.items() if spec.onnx_path.exists()]
+        if default not in self.available:
+            raise SystemExit(f"Model '{default}' is not exported; run: python -m scripts.export --model {default}")
+        self.default = default
+        self.use_npu = use_npu
+        self.detectors: dict[str, Detector] = {}
+        self.lock = threading.Lock()
+        self.score(default, "warm up")  # load the default model before serving
+
+    def score(self, name: str, text: str) -> dict:
+        with self.lock:
+            if name not in self.detectors:
+                self.detectors[name] = Detector(MODELS[name], use_npu=self.use_npu)
+            return self.detectors[name].score(text)
+
+
+def make_handler(pool: DetectorPool) -> type[BaseHTTPRequestHandler]:
+    """Build a request handler class bound to the given detector pool."""
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, status: int, body: bytes, content_type: str) -> None:
@@ -64,6 +83,9 @@ def make_handler(detector: Detector) -> type[BaseHTTPRequestHandler]:
         def do_GET(self) -> None:
             if self.path == "/":
                 self._send(200, INDEX_HTML, "text/html; charset=utf-8")
+            elif self.path == "/api/models":
+                models = [{"name": n, "hf_id": MODELS[n].hf_id} for n in pool.available]
+                self._send_json(200, {"default": pool.default, "models": models})
             else:
                 self._send_json(404, {"error": "Not found"})
 
@@ -73,15 +95,19 @@ def make_handler(detector: Detector) -> type[BaseHTTPRequestHandler]:
                 return
             try:
                 length = int(self.headers.get("Content-Length", 0))
-                text = json.loads(self.rfile.read(length)).get("text", "")
+                body = json.loads(self.rfile.read(length))
+                text, model = body.get("text", ""), body.get("model", pool.default)
             except (ValueError, AttributeError):
                 self._send_json(400, {"error": "Request body must be JSON with a 'text' field"})
                 return
             if not isinstance(text, str) or not text.strip():
                 self._send_json(400, {"error": "Please paste some text first"})
                 return
+            if model not in pool.available:
+                self._send_json(400, {"error": f"Unknown or unexported model: {model}"})
+                return
             try:
-                self._send_json(200, detector.score(text))
+                self._send_json(200, pool.score(model, text))
             except Exception as e:  # report model failures to the page instead of dropping the connection
                 self._send_json(500, {"error": str(e)})
 
@@ -90,13 +116,13 @@ def make_handler(detector: Detector) -> type[BaseHTTPRequestHandler]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model", choices=sorted(MODELS), default="fakespot")
+    parser.add_argument("--model", choices=sorted(MODELS), default="fakespot", help="Model selected at startup")
     parser.add_argument("--cpu", action="store_true", help="Run on the CPU instead of the NPU")
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
 
-    detector = Detector(MODELS[args.model], use_npu=not args.cpu)
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(detector))
+    pool = DetectorPool(args.model, use_npu=not args.cpu)
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(pool))
     device = "CPU" if args.cpu else "NPU"
     print(f"Serving {args.model} on http://127.0.0.1:{args.port} ({device}); Ctrl+C to stop", flush=True)
     try:
