@@ -66,4 +66,12 @@ MODELS: dict[str, ModelSpec] = {
         head="softmax2",
         ai_index=1,
     ),
+    # Single sigmoid output P(AI) per the model card; training length is not documented,
+    # 1024 tokens covers the ~4096-character excerpts used in its training data
+    "vanguard": ModelSpec(
+        name="vanguard",
+        hf_id="ShantanuT01/vanguard-ai-text-detector",
+        seq_len=1024,
+        head="sigmoid1",
+    ),
 }
