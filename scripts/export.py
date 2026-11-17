@@ -2,7 +2,7 @@
 Export a registered detector model to a static-shape ONNX model (batch 1, the model's
 fixed sequence length, opset 17) suitable for BF16 compilation on the Ryzen AI NPU.
 The tokenizer is saved next to the model so inference needs no network access.
-Run from the repository root: python -m scripts.export --model fakespot
+Run from the repository root: python -m scripts.export --model <onnx model>
 
 Author: Aritra Bal (ITP)
 Date: 2026-11-17
@@ -57,7 +57,7 @@ def export(spec: ModelSpec, out_dir: Path) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model", choices=sorted(MODELS), default="fakespot")
+    parser.add_argument("--model", required=True, choices=sorted(n for n, s in MODELS.items() if s.backend == "onnx"))
     parser.add_argument("--out-dir", type=Path, help="Defaults to artifacts/<model>/onnx")
     args = parser.parse_args()
     spec = MODELS[args.model]
