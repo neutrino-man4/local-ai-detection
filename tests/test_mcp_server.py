@@ -80,6 +80,8 @@ class ModelTools(unittest.TestCase):
             self.assertEqual(p["involvement"] is None, p["sentences"] == 0)
         self.assertEqual(sum(p["sentences"] for p in out["paragraph_scores"]), out["sentences"])
         self.assertAlmostEqual(out["ai_involvement"], round(100 * (1 - out["probs"]["human"]), 1))
+        p = out["probs"]
+        self.assertAlmostEqual(out["ai_score"], round(100 * (p["ai"] + 0.5 * p["ai_edited"]), 1))
 
     def test_paragraph_without_sentences(self) -> None:
         # Mesmer joins "Dear team," to the next sentence, so paragraph 0 owns no sentence
@@ -107,6 +109,7 @@ class ModelTools(unittest.TestCase):
         direct = det.analyze(edited)
         self.assertEqual(out["document"]["after"]["verdict"], direct["verdict"])
         self.assertEqual(out["document"]["after"]["probs"], direct["probs"])
+        self.assertIn("ai_score", out["document"]["before"])
         para = paragraph_scores(edited, direct["sentences"])[pid]
         self.assertEqual(out["paragraph"]["after"]["involvement"], round(100 * para["involvement"], 1))
         self.assertEqual(out["paragraph"]["after"]["flagged"], para["flagged"])
