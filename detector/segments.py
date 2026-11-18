@@ -82,6 +82,8 @@ def paragraph_scores(text: str, sentences: list[dict]) -> list[dict]:
     involvement is the visible-character-weighted mean of 1 - P(human) over the
     paragraph's sentences (0.0 when it owns none, for example a salutation joined to the
     next sentence; check "sentences"); flagged counts sentences whose label is not "human".
+    flagged_share is the visible-character fraction of the paragraph's sentences that are
+    flagged; unlike the count, it does not change when sentences are merged or split.
     """
     paragraphs = paragraph_spans(text)
     owners = assign_sentences(text, paragraphs, [(s["start"], s["end"]) for s in sentences])
@@ -91,6 +93,7 @@ def paragraph_scores(text: str, sentences: list[dict]) -> list[dict]:
         weights = [_visible(text, s["start"], s["end"]) for s in mine]
         total = sum(weights)
         involvement = sum(w * (1 - s["p"][0]) for w, s in zip(weights, mine)) / total if total else 0.0
+        flagged_share = sum(w for w, s in zip(weights, mine) if s["label"] != "human") / total if total else 0.0
         worst = max(mine, key=lambda s: 1 - s["p"][0])["text"][:80] if mine else ""
         out.append({
             "id": i,
@@ -101,6 +104,7 @@ def paragraph_scores(text: str, sentences: list[dict]) -> list[dict]:
             "sentences": len(mine),
             "involvement": involvement,
             "flagged": sum(s["label"] != "human" for s in mine),
+            "flagged_share": flagged_share,
             "worst": worst,
         })
     return out
