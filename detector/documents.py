@@ -10,7 +10,7 @@ Date: 2026-11-17
 
 from pathlib import Path
 
-from detector.mesmer import MesmerDetector
+from detector.mesmer import MesmerDetector, ai_score
 from detector.segments import (
     assign_sentences,
     check_invariants,
@@ -59,6 +59,7 @@ def read_document(path: str) -> tuple[Path, str]:
 def document_report(det: MesmerDetector, text: str, detail: str = "paragraphs", max_items: int = 100) -> dict:
     """Document verdict and scores; detail is "summary", "paragraphs" or "sentences".
 
+    ai_score is P(ai) + 0.5 P(ai_edited) in percent, as shown in the GUI ring.
     ai_involvement and paragraph involvement are 1 - P(human) in percent; a paragraph that
     owns no sentence (its text was joined to a neighbouring sentence) has involvement None. A paragraph's
     "worst" sentence (first characters) is listed only when the paragraph has flagged
@@ -69,6 +70,7 @@ def document_report(det: MesmerDetector, text: str, detail: str = "paragraphs", 
     paras = paragraph_scores(text, sentences)
     out = {
         "verdict": r["verdict"],
+        "ai_score": _pct(ai_score(r["probs"])),
         "ai_involvement": _pct(1 - r["probs"]["human"]),
         "probs": r["probs"],
         "words": r["words"],
@@ -137,9 +139,10 @@ def candidate_report(det: MesmerDetector, text: str, paragraph_id: int, candidat
             "delta_flagged_share": _delta(share_a, share_b),
         },
         "document": {
-            "before": {"verdict": before["verdict"], "ai_involvement": _pct(1 - before["probs"]["human"])},
-            "after": {"verdict": after["verdict"], "ai_involvement": _pct(1 - after["probs"]["human"]),
-                      "probs": after["probs"]},
+            "before": {"verdict": before["verdict"], "ai_score": _pct(ai_score(before["probs"])),
+                       "ai_involvement": _pct(1 - before["probs"]["human"])},
+            "after": {"verdict": after["verdict"], "ai_score": _pct(ai_score(after["probs"])),
+                      "ai_involvement": _pct(1 - after["probs"]["human"]), "probs": after["probs"]},
         },
         "new_flags_elsewhere": sum(max(0, a["flagged"] - b["flagged"]) for i, (a, b) in enumerate(zip(pa, pb))
                                    if i != paragraph_id),
