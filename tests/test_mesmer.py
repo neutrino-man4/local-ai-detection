@@ -91,6 +91,8 @@ class MesmerCache(unittest.TestCase):
             result = self.det.score(text)
             self.assertEqual("".join(s["text"] for s in result["segments"]), text)
             self.assertIn(result["verdict"], ("human", "ai", "ai_edited"))
+            p = result["probs"]
+            self.assertAlmostEqual(result["ai_score"], 100 * (p["ai"] + 0.5 * p["ai_edited"]))
             sentences = self.det.analyze(text)["sentences"]
             scores = paragraph_scores(text, sentences)
             self.assertEqual(len(scores), len(paragraph_spans(text)))
