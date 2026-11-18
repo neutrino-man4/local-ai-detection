@@ -10,12 +10,14 @@
     --bg: #f6f7f9; --card: #ffffff; --text: #16181d; --muted: #6b7280;
     --border: #e5e7eb; --track: #e8eaee; --accent: #4f46e5; --accent-text: #ffffff;
     --error: #c2410c;
+    --human: #16a34a; --edited: #d97706; --ai: #dc2626;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #0f1115; --card: #171a21; --text: #e7e9ee; --muted: #8b93a1;
       --border: #262a33; --track: #2a2f39; --accent: #6366f1; --accent-text: #ffffff;
       --error: #fb923c;
+      --human: #22c55e; --edited: #f59e0b; --ai: #ef4444;
     }
   }
   * { box-sizing: border-box; }
@@ -38,10 +40,11 @@
   .ring svg { display: block; transform: rotate(-90deg); }
   .ring circle { fill: none; stroke-width: 12; }
   .ring .track { stroke: var(--track); }
-  .ring .arc {
-    stroke-linecap: round;
-    transition: stroke-dashoffset 0.9s cubic-bezier(.2,.7,.2,1), stroke 0.9s ease;
-  }
+  /* One arc per class, laid end to end clockwise from the top: AI, AI-edited, Human */
+  .ring .arc { transition: stroke-dasharray 0.9s cubic-bezier(.2,.7,.2,1), stroke-dashoffset 0.9s cubic-bezier(.2,.7,.2,1); }
+  .arc.ai { stroke: var(--ai); }
+  .arc.ai_edited { stroke: var(--edited); }
+  .arc.human { stroke: var(--human); }
   /* Text block stays well inside the inner circle (width 143 px = 70 % of 204 px) */
   .ring-center {
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -51,7 +54,13 @@
   .pct { font-size: 44px; font-weight: 650; line-height: 1; font-variant-numeric: tabular-nums; }
   .pct small { font-size: 22px; font-weight: 600; margin-left: 1px; }
   .verdict { margin-top: 8px; font-size: 13px; line-height: 17px; color: var(--muted); }
-  .verdict span { display: block; white-space: nowrap; }
+  .verdict span { display: block; white-space: nowrap; font-weight: 600; }
+  .legend {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 18px;
+    font-size: 13px; margin-top: 10px; font-variant-numeric: tabular-nums;
+  }
+  .legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+  .legend b { font-weight: 600; margin-left: 4px; }
   .model { text-align: center; color: var(--muted); font-size: 12px; margin-top: 8px; }
 
   textarea {
@@ -106,7 +115,9 @@
     <div class="ring">
       <svg width="240" height="240" viewBox="0 0 240 240" aria-hidden="true">
         <circle class="track" cx="120" cy="120" r="108"></circle>
-        <circle id="arc" class="arc" cx="120" cy="120" r="108"></circle>
+        <circle class="arc ai" cx="120" cy="120" r="108"></circle>
+        <circle class="arc ai_edited" cx="120" cy="120" r="108"></circle>
+        <circle class="arc human" cx="120" cy="120" r="108"></circle>
       </svg>
       <div class="ring-center">
         <div id="caption" class="caption"></div>
@@ -114,6 +125,7 @@
         <div id="verdict" class="verdict"></div>
       </div>
     </div>
+    <div id="legend" class="legend"></div>
     <div id="model" class="model"></div>
   </section>
 
@@ -135,21 +147,13 @@
   const $ = (id) => document.getElementById(id);
   const input = $("input"), shaded = $("shaded"), analyzeBtn = $("analyze"), editBtn = $("edit");
   const modelSel = $("model-select");
-  const arc = $("arc"), CIRC = 2 * Math.PI * 108;
-  arc.style.strokeDasharray = CIRC;
-  arc.style.strokeDashoffset = CIRC;
+  const CIRC = 2 * Math.PI * 108;
 
-  // Green fades from bright (0 %) to faded (50 %); red goes from faded (50 %) to bright (100 %)
-  function scoreColor(s, alpha = 1) {
-    let h, sat, l;
-    if (s < 50) { const t = s / 50; h = 142; sat = 75 - 55 * t; l = 42 + 8 * t; }
-    else { const t = (s - 50) / 50; h = 0; sat = 20 + 65 * t; l = 50; }
-    return `hsla(${h}, ${sat.toFixed(1)}%, ${l.toFixed(1)}%, ${alpha})`;
-  }
-
-  // Mesmer's calibrated verdicts and sentence labels; LABEL_SCORE places each on the ring colour scale
+  // Mesmer's classes in ring order, with the colour variable of each
+  const CLASSES = ["ai", "ai_edited", "human"];
   const LABEL_NAMES = { human: "Human", ai: "AI", ai_edited: "AI-edited" };
-  const LABEL_SCORE = { human: 0, ai_edited: 60, ai: 100 };
+  const LABEL_COLOR = { human: "var(--human)", ai_edited: "var(--edited)", ai: "var(--ai)" };
+  const arcs = Object.fromEntries(CLASSES.map((k) => [k, document.querySelector(`.arc.${k}`)]));
 
   const shown = (s) => Math.min(100, Math.max(0, Math.floor(s)));
 
@@ -178,25 +182,42 @@
     }
   }
 
-  const pctText = (probs) => Object.entries(probs).map(([k, p]) => `${LABEL_NAMES[k] || k} ${Math.round(100 * p)}%`).join(", ");
+  const fmtP = (p) => (p > 0 && p < 0.005 ? "<1%" : `${Math.round(100 * p)}%`);
+  const pctText = (probs) => CLASSES.map((k) => `${LABEL_NAMES[k]} ${fmtP(probs[k])}`).join(", ");
 
-  function renderRing(s, verdictKey, probs) {
-    const d = shown(s);
-    $("pct").innerHTML = `${d}<small>%</small>`;
-    $("result").querySelector(".ring").title = `AI involvement ${d}% (${pctText(probs)})`;
-    $("caption").textContent = "AI involvement";
+  function renderRing(score, verdictKey, probs) {
+    $("pct").innerHTML = `${shown(score)}<small>%</small>`;
+    $("caption").textContent = "AI score";
+    $("result").querySelector(".ring").title = "AI score = P(AI) + half of P(AI-edited)";
     const el = document.createElement("span");
     el.textContent = LABEL_NAMES[verdictKey] || verdictKey;
+    el.style.color = LABEL_COLOR[verdictKey] || "inherit";
     $("verdict").replaceChildren(el);
-    // Restart the animation from an empty ring on every result
-    arc.style.transition = "none";
-    arc.style.strokeDashoffset = CIRC;
-    arc.style.opacity = s < 0.5 ? 0 : 1;
-    arc.getBoundingClientRect();
-    arc.style.transition = "";
-    // The calibrated verdict sets the colour, so a high number below the flagging threshold stays green
-    arc.style.stroke = scoreColor(LABEL_SCORE[verdictKey] ?? s);
-    arc.style.strokeDashoffset = CIRC * (1 - Math.min(100, s) / 100);
+
+    $("legend").replaceChildren(...CLASSES.map((k) => {
+      const item = document.createElement("span");
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      dot.style.backgroundColor = LABEL_COLOR[k];
+      const value = document.createElement("b");
+      value.textContent = fmtP(probs[k]);
+      item.append(dot, LABEL_NAMES[k], value);
+      return item;
+    }));
+
+    // Each class gets an arc proportional to its probability; restart from an empty ring
+    let start = 0;
+    for (const k of CLASSES) {
+      const a = arcs[k], f = probs[k] || 0;
+      a.style.transition = "none";
+      a.style.strokeDasharray = `0 ${CIRC}`;
+      a.style.strokeDashoffset = 0;
+      a.getBoundingClientRect();
+      a.style.transition = "";
+      a.style.strokeDasharray = `${f * CIRC} ${CIRC}`;
+      a.style.strokeDashoffset = -start * CIRC;
+      start += f;
+    }
   }
 
   function renderSegments(segments) {
@@ -205,7 +226,8 @@
       el.textContent = seg.text;
       // Sentences are tinted by label with probabilities on hover; gaps between them stay plain
       if (seg.label) {
-        el.style.backgroundColor = scoreColor(LABEL_SCORE[seg.label] ?? seg.ai_percent, seg.label === "human" ? 0.18 : 0.34);
+        const mix = seg.label === "human" ? 16 : 30;
+        el.style.backgroundColor = `color-mix(in srgb, ${LABEL_COLOR[seg.label] || "var(--muted)"} ${mix}%, transparent)`;
         el.title = `Sentence: ${LABEL_NAMES[seg.label] || seg.label} (${pctText(seg.probs)})`;
       }
       return el;
@@ -229,7 +251,7 @@
       input.hidden = true; shaded.hidden = false;
       analyzeBtn.hidden = true; editBtn.hidden = false;
       $("result").hidden = false;
-      renderRing(data.ai_percent, data.verdict, data.probs);
+      renderRing(data.ai_score, data.verdict, data.probs);
     } catch (err) {
       $("error").textContent = err.message;
     } finally {
