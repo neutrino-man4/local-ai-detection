@@ -77,13 +77,21 @@ The log cites humanizer patterns as §N and local rules by code (P1, R2, X3, W14
 ## 2. Baseline
 
 1. Call `score_document(path=work, detail="paragraphs", max_items=500)`.
-2. Record the baseline: `verdict`, `ai_involvement`, `probs`, `flagged_sentences`,
-   `flagged_paragraphs`.
+2. Record the baseline: `verdict`, `ai_score`, `ai_involvement`, `probs`,
+   `flagged_sentences`, `flagged_paragraphs`.
+
+   Two document numbers are reported, and both matter for a "human" verdict:
+   - `ai_score` = P(ai) + 0.5 P(ai_edited), the number in the GUI ring. Mesmer calls a
+     text "ai" when this reaches 0.6084 (and P(ai) >= P(ai_edited)).
+   - `ai_involvement` = 1 - P(human). Mesmer calls a text "ai_edited" when this reaches
+     0.907, and flags a sentence when its own 1 - P(human) reaches 0.8696. Paragraph
+     `involvement` and `flagged_share` are built from it, so it stays the paragraph
+     measure.
 3. If the target is already met, write `report.md` ("no change needed", baseline numbers)
    and stop.
 4. Classify every paragraph as **editable** or **skipped** (section 5). Skipped paragraphs
    are never rewritten, whatever their score.
-5. Tell the user in one line: baseline verdict and involvement, number of flagged
+5. Tell the user in one line: baseline verdict, AI score and involvement, number of flagged
    paragraphs, and the target.
 
 ## 3. One pass
@@ -163,8 +171,10 @@ Repeat up to `max_passes` times.
         and
       - `delta_involvement <= -5` or `delta_flagged_share <= -5`;
       - `new_flags_elsewhere == 0`;
-      - the document is not worse: its verdict did not move towards "ai", and its
-        `ai_involvement` did not rise by more than 1 point.
+      - the document is not worse: its verdict did not move towards "ai", and neither
+        its `ai_score` nor its `ai_involvement` rose by more than 1 point. (A rewrite can
+        lower involvement while moving probability from ai_edited to ai; the AI score
+        catches that.)
 
       "Best" means lowest `flagged_share`, then lowest paragraph involvement, then lowest
       document involvement.
@@ -192,7 +202,7 @@ Repeat up to `max_passes` times.
    3. If the document is worse than at the start of the pass, restore the previous
       version into `work` and log a revert. Edits are scored in sequence, so this should
       be rare.
-   4. Tell the user in one line: pass number, edits accepted, verdict and involvement now.
+   4. Tell the user in one line: pass number, edits accepted, verdict, AI score and involvement now.
 
 ## 4. Stop when
 
@@ -248,7 +258,7 @@ authoritative.
 Write `report.md` in the run folder, and run `diff -u v000.<ext> work.<ext> > changes.diff`.
 The report contains:
 
-1. **Summary table:** baseline and final verdict, `ai_involvement`, probabilities,
+1. **Summary table:** baseline and final verdict, `ai_score`, `ai_involvement`, probabilities,
    flagged sentences, flagged paragraphs; target met (yes or no); passes run.
 2. **Accepted edits:** one row per edit with paragraph id, line and unit (sentences i-j
    of n), involvement before
