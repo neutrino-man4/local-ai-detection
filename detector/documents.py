@@ -32,6 +32,15 @@ def _involvement(p: dict) -> float | None:
     return _pct(p["involvement"]) if p["sentences"] else None
 
 
+def _flagged_share(p: dict) -> float | None:
+    """Character-weighted share of flagged sentences in percent, or None without sentences."""
+    return _pct(p["flagged_share"]) if p["sentences"] else None
+
+
+def _delta(a: float | None, b: float | None) -> float | None:
+    return round(a - b, 1) if a is not None and b is not None else None
+
+
 def read_document(path: str) -> tuple[Path, str]:
     """Resolve and read a UTF-8 text file, rejecting missing, empty or oversized files."""
     p = Path(path).expanduser()
@@ -97,6 +106,9 @@ def candidate_report(det: MesmerDetector, text: str, paragraph_id: int, candidat
     The candidate is substituted into the document and the document is re-scored, so the
     paragraph is judged in its real windows and context (cached windows are reused).
     new_flags_elsewhere counts sentences in other paragraphs that became flagged.
+    flagged_share (percent of the paragraph's characters in flagged sentences) is the
+    measure to compare: the flagged count falls when sentences are merged and rises when
+    they are split, without any change in how the text reads.
     """
     n = len(paragraph_spans(text))
     if not 0 <= paragraph_id < n:
@@ -111,12 +123,18 @@ def candidate_report(det: MesmerDetector, text: str, paragraph_id: int, candidat
     owners = assign_sentences(edited, paragraph_spans(edited), [(s["start"], s["end"]) for s in after["sentences"]])
     errors, warnings = check_invariants(original, candidate)
     inv_b, inv_a = _involvement(pb[paragraph_id]), _involvement(pa[paragraph_id])
+    share_b, share_a = _flagged_share(pb[paragraph_id]), _flagged_share(pa[paragraph_id])
+
+    def side(p: dict, inv: float | None, share: float | None) -> dict:
+        return {"involvement": inv, "flagged_share": share, "flagged": p["flagged"], "sentences": p["sentences"]}
+
     return {
         "paragraph_id": paragraph_id,
         "paragraph": {
-            "before": {"involvement": inv_b, "flagged": pb[paragraph_id]["flagged"]},
-            "after": {"involvement": inv_a, "flagged": pa[paragraph_id]["flagged"]},
-            "delta_involvement": round(inv_a - inv_b, 1) if inv_a is not None and inv_b is not None else None,
+            "before": side(pb[paragraph_id], inv_b, share_b),
+            "after": side(pa[paragraph_id], inv_a, share_a),
+            "delta_involvement": _delta(inv_a, inv_b),
+            "delta_flagged_share": _delta(share_a, share_b),
         },
         "document": {
             "before": {"verdict": before["verdict"], "ai_involvement": _pct(1 - before["probs"]["human"])},
