@@ -21,8 +21,11 @@ conversation:
    mode (return only the final text).
 2. Read `references/loop-overrides.md` in full. Where it conflicts with humanizer, the
    overrides win.
+3. In academic mode, also read `references/writing_style.md` in full. It takes precedence
+   over humanizer and over the overrides' R rules; its conflicts section (C1-C17) states
+   each resolution. P, A and X rules are never overridden.
 
-The log cites humanizer patterns as §N and local rules by code (P1, R2, X3, ...).
+The log cites humanizer patterns as §N and local rules by code (P1, R2, X3, W14, C4, ...).
 
 ## 0. Ground rules
 
@@ -52,7 +55,7 @@ The log cites humanizer patterns as §N and local rules by code (P1, R2, X3, ...
    | `max_passes` | 4 | Full passes over the selected paragraphs. |
    | `per_pass` | 3 | Paragraphs rewritten per pass. |
    | `candidates` | 3 | Rewrites tried per paragraph. |
-   | `mode` | `auto` | `academic` for papers, theses, proposals, rebuttals and all `.tex` files; `general` otherwise. Academic mode applies the overrides' R rules in full. |
+   | `mode` | `auto` | `academic` for papers, theses, proposals, rebuttals and all `.tex` files; `general` otherwise. Academic mode applies `references/writing_style.md` first, then the overrides' R rules. |
 
 2. **Check the detector.** The `mcp__mesmer__*` tools must be available. If they are not,
    tell the user to run `claude mcp list` (expect `mesmer: ... - Connected`), and stop.
@@ -102,7 +105,8 @@ Repeat up to `max_passes` times.
       paragraph before and after, for context.
    2. Write `candidates` rewrites of this paragraph only:
       - Run humanizer's "How to work" steps 1-4 on the paragraph, aimed at the flagged
-        sentences, with the overrides applied (and the R rules in academic mode).
+        sentences, with the overrides applied. In academic mode, apply `writing_style.md`
+        and then the R rules.
       - Give each candidate a different emphasis:
         - (a) staging and inflation: state the point, cut significance and padding
           (§1-§5, §13-§17);
@@ -112,7 +116,8 @@ Repeat up to `max_passes` times.
           (§6-§8, humanizer step 4).
       - Keep to P2: one paragraph, the same list structure, all LaTeX commands and `%`
         comment lines, and the original line-wrapping style.
-      - Run the overrides' candidate checklist on each candidate before scoring it.
+      - Run the overrides' candidate checklist on each candidate before scoring it. In
+        academic mode, also run the paragraph checklist in `writing_style.md`.
       - Show the labels of the flagged sentences, not their probabilities, while writing.
         The aim is to fix prose patterns, not to chase numbers.
    3. Score each candidate with `score_candidate(path=work, paragraph_id, candidate_text)`.
