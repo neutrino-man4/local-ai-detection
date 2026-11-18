@@ -110,6 +110,8 @@ class ModelTools(unittest.TestCase):
         para = paragraph_scores(edited, direct["sentences"])[pid]
         self.assertEqual(out["paragraph"]["after"]["involvement"], round(100 * para["involvement"], 1))
         self.assertEqual(out["paragraph"]["after"]["flagged"], para["flagged"])
+        self.assertEqual(out["paragraph"]["after"]["flagged_share"], round(100 * para["flagged_share"], 1))
+        self.assertIn("delta_flagged_share", out["paragraph"])
         self.assertTrue(out["candidate_sentences"])
         self.assertIn("passed", out["invariants"])
         self.assertGreaterEqual(out["windows"]["cached"], 1, "windows before the last paragraph should be reused")
