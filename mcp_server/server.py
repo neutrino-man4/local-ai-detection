@@ -106,8 +106,9 @@ def score_candidate(path: str, paragraph_id: int, candidate_text: str) -> str:
     """Score a proposed rewrite of one paragraph in place, without modifying the file.
 
     The candidate replaces paragraph paragraph_id (0-based, blank-line-separated) and the whole
-    document is re-scored, reusing cached windows. Returns paragraph involvement and flagged
-    sentences before and after, the document verdict before and after, new_flags_elsewhere
+    document is re-scored, reusing cached windows. Returns paragraph involvement, flagged_share
+    (percent of the paragraph's characters in flagged sentences; compare this, not the flagged
+    count, which merging or splitting sentences changes) and flagged count before and after, the document verdict before and after, new_flags_elsewhere
     (sentences in other paragraphs that became flagged), the candidate's sentence labels, and an
     invariant check of the candidate against the original paragraph. The candidate must be a single
     paragraph without blank lines.
