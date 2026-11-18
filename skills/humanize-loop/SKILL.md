@@ -1,9 +1,9 @@
 ---
 name: humanize-loop
-description: Detector-guided humanizing of a document. Scores a Markdown, plain-text or LaTeX file with the local Mesmer AI-text detector (MCP server "mesmer"), rewrites the flagged paragraphs following built-in rewrite rules (no AI-writing tells, plain human syntax, content preserved), scores every candidate in place, keeps only rewrites that measurably help, and loops until the document verdict is human or progress stops. Ends with a report and diff and asks before writing anything next to the original.
+description: Detector-guided humanizing of a document. Scores a Markdown, plain-text or LaTeX file with the local Mesmer AI-text detector (MCP server "mesmer"), rewrites the flagged paragraphs with the humanizer skill (blader/humanizer plugin) plus local overrides for content preservation and academic/LaTeX text, scores every candidate in place, keeps only rewrites that measurably help, and loops until the document verdict is human or progress stops. Ends with a report and diff and asks before writing anything next to the original.
 when_to_use: Use when the user invokes /humanize-loop, or asks to humanize, de-AI or naturalize a file or text, to lower its AI score, or to make it read less like AI-generated writing. Also for a quick rewrite of pasted text.
 argument-hint: <file | "text"> [target=verdict|clean|involvement<N] [max_passes=4] [per_pass=3] [candidates=3] [mode=auto|general|academic]
-allowed-tools: mcp__mesmer__score_document mcp__mesmer__score_candidate mcp__mesmer__check_invariants Read Write Edit Bash(cp *) Bash(mkdir *) Bash(diff *) Bash(mktemp *) Bash(date *)
+allowed-tools: Skill mcp__mesmer__score_document mcp__mesmer__score_candidate mcp__mesmer__check_invariants Read Write Edit Bash(cp *) Bash(mkdir *) Bash(diff *) Bash(mktemp *) Bash(date *)
 ---
 
 # humanize-loop
@@ -13,8 +13,16 @@ local Mesmer detector, and keep only changes that help without altering content.
 
 Arguments: `$ARGUMENTS`
 
-Read `references/rewrite-rules.md` in full before the first rewrite in a conversation.
-Rules are cited by code (C1, L2, H4, ...) in the log.
+Rewriting is delegated to the `humanizer` skill. Before the first rewrite in a
+conversation:
+
+1. Invoke it with the Skill tool (`humanizer:humanizer`). Use its patterns, its "How to
+   work" steps and its "When not to act" section for every candidate, in its embedded
+   mode (return only the final text).
+2. Read `references/loop-overrides.md` in full. Where it conflicts with humanizer, the
+   overrides win.
+
+The log cites humanizer patterns as §N and local rules by code (P1, R2, X3, ...).
 
 ## 0. Ground rules
 
@@ -22,13 +30,14 @@ Rules are cited by code (C1, L2, H4, ...) in the log.
    - Never change facts, numbers, citations, mathematics, quotations, technical terms,
      claim strength or hedges in order to lower a score.
    - A paragraph that cannot be improved without that stays as it is, marked stubborn.
-2. **Better prose is the only lever.** The forbidden tactics in rules section 8 (typos,
-   homoglyphs, invisible characters, synonym noise, invented details) are never used.
+2. **Better prose is the only lever.** The forbidden tactics X1-X6 in the overrides
+   (typos, homoglyphs, invisible characters, synonym noise, invented details) are never
+   used.
 3. **Never touch the original file** until the user chooses an option at the end (step 7).
    All work happens in a working folder.
 4. **Text that already meets the target is left alone.** Report "no change needed" and
    stop.
-5. **Explain every accepted change** in one line with rule codes (rule H6).
+5. **Explain every accepted change** in one line with pattern numbers and codes (P5).
 6. **Mesmer scores are estimates.** Say so in the report. Mesmer is unreliable below
    about 50 words, and its documented false positives concentrate in academic abstracts,
    news and poetry.
@@ -43,10 +52,13 @@ Rules are cited by code (C1, L2, H4, ...) in the log.
    | `max_passes` | 4 | Full passes over the selected paragraphs. |
    | `per_pass` | 3 | Paragraphs rewritten per pass. |
    | `candidates` | 3 | Rewrites tried per paragraph. |
-   | `mode` | `auto` | `academic` for papers, theses, proposals, rebuttals and all `.tex` files; `general` otherwise. Academic mode applies rules section 7 in full. |
+   | `mode` | `auto` | `academic` for papers, theses, proposals, rebuttals and all `.tex` files; `general` otherwise. Academic mode applies the overrides' R rules in full. |
 
 2. **Check the detector.** The `mcp__mesmer__*` tools must be available. If they are not,
    tell the user to run `claude mcp list` (expect `mesmer: ... - Connected`), and stop.
+   **Check the rewriter.** If the Skill tool cannot load `humanizer:humanizer`, tell the
+   user to run `/plugin marketplace add blader/humanizer` and
+   `/plugin install humanizer@humanizer`, and stop.
 3. **Input.**
    - **File:** it must exist and be `.md`, `.markdown`, `.txt` or `.tex`. For other types,
      ask before proceeding.
@@ -89,16 +101,18 @@ Repeat up to `max_passes` times.
    1. Read its exact text from `work` (use the `line` from the report). Also read the
       paragraph before and after, for context.
    2. Write `candidates` rewrites of this paragraph only:
-      - Apply rules sections 2-6 (and 7 in academic mode), aimed at the flagged sentences.
+      - Run humanizer's "How to work" steps 1-4 on the paragraph, aimed at the flagged
+        sentences, with the overrides applied (and the R rules in academic mode).
       - Give each candidate a different emphasis:
-        - (a) content: cut significance and padding (C-codes);
-        - (b) language: plain verbs, copulas, no parallelism or triplets (L-codes);
-        - (c) human syntax and rhythm (H-codes).
-      - Keep one paragraph (no blank lines), the same list structure, all LaTeX commands
-        and `%` comment lines in place, and the same claims.
-      - Keep the original's line-wrapping style: a single line, hard-wrapped at a similar
-        width, or one sentence per line.
-      - Run the rules section 10 checklist on each candidate before scoring it.
+        - (a) staging and inflation: state the point, cut significance and padding
+          (§1-§5, §13-§17);
+        - (b) language: plain verbs and copulas, AI vocabulary, stacked qualifiers
+          (§9, §12, §18);
+        - (c) rhythm and structure: triads, repeated openings, dashes, sentence length
+          (§6-§8, humanizer step 4).
+      - Keep to P2: one paragraph, the same list structure, all LaTeX commands and `%`
+        comment lines, and the original line-wrapping style.
+      - Run the overrides' candidate checklist on each candidate before scoring it.
       - Show the labels of the flagged sentences, not their probabilities, while writing.
         The aim is to fix prose patterns, not to chase numbers.
    3. Score each candidate with `score_candidate(path=work, paragraph_id, candidate_text)`.
@@ -106,8 +120,8 @@ Repeat up to `max_passes` times.
       - **Reject** it if a `warnings` entry shows a real loss, for example a name that is
         genuinely gone. A name that merely moved to the start of a sentence is fine.
       - **Reject** it if it is more than 25% longer than the original.
-      - **Shorter is fine** when the removed words are puffery covered by the rules (C1-C7,
-        L7) and the log names the codes. Cutting such a paragraph by 30-50% is normal.
+      - **Shorter is fine** when the removed words are staging or puffery covered by
+        humanizer (§1-§5, §13-§17) and the log names the patterns. Cutting such a paragraph by 30-50% is normal.
       - **Reject** any candidate that drops a claim, a qualifier or a fact.
    4. **Accept** the best remaining candidate only if all of these hold:
       - `paragraph.after.flagged <= paragraph.before.flagged`, and
@@ -169,7 +183,8 @@ Inside prose paragraphs, edit only the prose: keep every command, `\cite`/`\ref`
 key, inline math and `%` comment line exactly. Mesmer scores the raw source, so LaTeX
 markup slightly affects scores. Note this in the report.
 
-Headings are never changed. If a heading follows rules C8, flag it in the report instead.
+Headings are never changed. If a heading matches humanizer §13, §20 or §24, flag it in the
+report instead (P4).
 
 **Hard-wrapped text.** Mesmer splits units at line breaks as well as sentence ends. In
 hard-wrapped or one-sentence-per-line sources (common in LaTeX), "sentences", flagged
@@ -194,8 +209,8 @@ The report contains:
    did not improve, or invariants failed).
 4. **Items for the author:**
    - every `[needs specific]` or `[needs source]` mark that was inserted;
-   - placeholders found (rule A3);
-   - headings flagged under C8;
+   - placeholders found (A3);
+   - headings flagged under P4;
    - invariant warnings that were accepted, with the reason.
 5. **Notes:**
    - scores are statistical estimates from one detector, not proof of authorship;
