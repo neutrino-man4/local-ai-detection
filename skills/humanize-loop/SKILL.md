@@ -129,17 +129,24 @@ Repeat up to `max_passes` times.
         humanizer (§1-§5, §13-§17) and the log names the patterns. Cutting such a paragraph by 30-50% is normal.
       - **Reject** any candidate that drops a claim, a qualifier or a fact.
    4. **Accept** the best remaining candidate only if all of these hold:
-      - `paragraph.after.flagged <= paragraph.before.flagged`, and
-        `delta_involvement <= -5`, or the flagged count fell;
+      - `delta_flagged_share <= 2` (the flagged share did not rise beyond length noise),
+        and
+      - `delta_involvement <= -5` or `delta_flagged_share <= -5`;
       - `new_flags_elsewhere == 0`;
       - the document is not worse: its verdict did not move towards "ai", and its
         `ai_involvement` did not rise by more than 1 point.
 
-      "Best" means fewest flagged sentences, then lowest paragraph involvement, then lowest
+      "Best" means lowest `flagged_share`, then lowest paragraph involvement, then lowest
       document involvement.
+
+      Never judge a candidate by its flagged count (`flagged`). Merging two flagged
+      sentences lowers the count and splitting one raises it, with no change in how the
+      text reads. `flagged_share` is the percentage of the paragraph's characters that lie
+      in flagged sentences, so it changes only when text actually moves between flagged
+      and unflagged.
    5. **If accepted:**
       - Replace the paragraph in `work` with the Edit tool (exact old text, new text).
-      - Log the paragraph id, before and after (involvement, flagged), the document after,
+      - Log the paragraph id, before and after (involvement, flagged share), the document after,
         and a one-line explanation with rule codes.
    6. **If not accepted:** count an attempt. After 2 failed attempts in different passes,
       mark the paragraph **stubborn** and do not select it again.
@@ -209,7 +216,7 @@ The report contains:
 1. **Summary table:** baseline and final verdict, `ai_involvement`, probabilities,
    flagged sentences, flagged paragraphs; target met (yes or no); passes run.
 2. **Accepted edits:** one row per edit with paragraph id and line, involvement before
-   and after, flagged before and after, and the rule-code explanation.
+   and after, flagged share before and after, and the rule-code explanation.
 3. **Stubborn paragraphs:** their worst sentence and why no candidate was accepted (score
    did not improve, or invariants failed).
 4. **Items for the author:**
