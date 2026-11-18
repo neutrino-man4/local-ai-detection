@@ -41,8 +41,9 @@ mcp = MCPServer(
     instructions=(
         "Local AI-text detector (Mesmer 4B, mesmertech/mesmer-ai-detector-4b) running on the CPU. "
         "Pass paths to UTF-8 text files, not the text itself. Paragraphs are blank-line-separated blocks, "
-        "numbered from 0. ai_involvement is 1 - P(human) in percent; the verdict uses the model's calibrated "
-        "thresholds (human / ai_edited / ai). Scoring costs about 5 s per 1,000 tokens; re-scoring after an "
+        "numbered from 0. ai_score is P(ai) + 0.5 P(ai_edited) in percent (the number in the GUI ring); "
+        "ai_involvement and paragraph involvement are 1 - P(human) in percent, the quantity behind sentence "
+        "flags; the verdict uses the model's calibrated thresholds (human / ai_edited / ai). Scoring costs about 5 s per 1,000 tokens; re-scoring after an "
         "edit reuses unchanged windows, so edits near the end of a document are cheapest. Scores are "
         "statistical estimates, not proof of authorship. Model licence: CC BY-NC-SA 4.0 (non-commercial)."
     ),
@@ -89,7 +90,8 @@ def score_document(
 ) -> str:
     """Score a text file with Mesmer.
 
-    Returns the document verdict (human / ai_edited / ai), ai_involvement (1 - P(human), %),
+    Returns the document verdict (human / ai_edited / ai), ai_score (P(ai) + 0.5 P(ai_edited), %),
+    ai_involvement (1 - P(human), %),
     probabilities, and sentence and paragraph flag counts. detail="paragraphs" adds per-paragraph
     scores (id, line, words, involvement %, flagged count, worst flagged sentence);
     detail="sentences" also adds every sentence's label, probabilities [human, ai, ai_edited] and
