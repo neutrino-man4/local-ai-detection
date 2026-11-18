@@ -2,7 +2,9 @@
 
 The rewriting itself follows the `humanizer` skill (blader/humanizer): its patterns §1-§26,
 its "How to work" steps 1-4, and its "When not to act" section. This file lists what the
-loop adds or changes. **Where this file and humanizer disagree, this file wins.**
+loop adds or changes. **Where this file and humanizer disagree, this file wins.** In
+academic mode, `writing_style.md` takes precedence over humanizer and over section 3 (R) of
+this file; the P, A and X rules are never overridden.
 
 Codes (P1, R2, X1, ...) and humanizer pattern numbers (§1, §13, ...) are used in the run
 log to explain each change.
@@ -45,7 +47,8 @@ log to explain each change.
 
 ## 3. Research writing and LaTeX (R)
 
-Applied in academic mode, and to every `.tex` file.
+Applied in academic mode, and to every `.tex` file. Where an R rule conflicts with
+`writing_style.md`, the writing style wins (see its conflicts section).
 
 - **R1 Formal is not AI.** Good grammar, academic register and long words are not tells.
   A physics paper still says "we" and hedges where the evidence is uncertain.
