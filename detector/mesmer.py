@@ -19,6 +19,9 @@ import torch
 
 from detector.models import ModelSpec
 
+# Weight of P(ai_edited) in the AI score, as in the verdict rule of policy.json
+EDITED_WEIGHT: float = 0.5
+
 
 def load_reference(spec: ModelSpec) -> ModuleType:
     """Import the authors' mesmer_detector.py from the model folder."""
@@ -82,7 +85,10 @@ class MesmerDetector:
         return self.det.analyze(text)
 
     def score(self, text: str) -> dict:
-        """Result for the UI: AI involvement (1 - P(human)), calibrated verdict, and segments.
+        """Result for the UI: AI score, calibrated verdict, class probabilities and segments.
+
+        The AI score is 100 * (P(ai) + EDITED_WEIGHT * P(ai_edited)), the quantity Mesmer's
+        verdict rule compares with t_ai.
 
         Gaps between sentence spans become unlabelled segments, so the segment texts joined
         in order reproduce the input exactly.
@@ -96,13 +102,12 @@ class MesmerDetector:
                 "text": s["text"],
                 "label": s["label"],
                 "probs": dict(zip(self.ref.LABELS, s["p"])),
-                "ai_percent": 100 * (1 - s["p"][0]),
             })
             pos = s["end"]
         if pos < len(text):
             segments.append({"text": text[pos:]})
         return {
-            "ai_percent": 100 * (1 - r["probs"]["human"]),
+            "ai_score": 100 * (r["probs"]["ai"] + EDITED_WEIGHT * r["probs"]["ai_edited"]),
             "verdict": r["verdict"],
             "probs": r["probs"],
             "model": self.spec.hf_id,
