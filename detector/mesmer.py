@@ -23,6 +23,11 @@ from detector.models import ModelSpec
 EDITED_WEIGHT: float = 0.5
 
 
+def ai_score(probs: dict) -> float:
+    """P(ai) + EDITED_WEIGHT * P(ai_edited): the quantity Mesmer's verdict rule compares with t_ai."""
+    return probs["ai"] + EDITED_WEIGHT * probs["ai_edited"]
+
+
 def load_reference(spec: ModelSpec) -> ModuleType:
     """Import the authors' mesmer_detector.py from the model folder."""
     src = importlib.util.spec_from_file_location(f"mesmer_detector_{spec.name}", spec.hf_dir / "mesmer_detector.py")
@@ -107,7 +112,7 @@ class MesmerDetector:
         if pos < len(text):
             segments.append({"text": text[pos:]})
         return {
-            "ai_score": 100 * (r["probs"]["ai"] + EDITED_WEIGHT * r["probs"]["ai_edited"]),
+            "ai_score": 100 * ai_score(r["probs"]),
             "verdict": r["verdict"],
             "probs": r["probs"],
             "model": self.spec.hf_id,
