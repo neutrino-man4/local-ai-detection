@@ -1,6 +1,6 @@
 ---
 name: humanize-loop
-description: Detector-guided humanizing of a document. Scores a Markdown, plain-text or LaTeX file with the local Mesmer AI-text detector (MCP server "mesmer"), rewrites the flagged paragraphs with the humanizer skill (blader/humanizer plugin) plus local overrides for content preservation and academic/LaTeX text, scores every candidate in place, keeps only rewrites that measurably help, and loops until the document verdict is human or progress stops. Ends with a report and diff and asks before writing anything next to the original.
+description: Detector-guided humanizing of a document. Scores a Markdown, plain-text or LaTeX file with the local Mesmer AI-text detector (MCP server "mesmer"), rewrites flagged paragraphs one unit of at least three sentences at a time with the humanizer skill (blader/humanizer plugin) plus local overrides for content preservation and academic/LaTeX text, scores every candidate in place, keeps only rewrites that measurably help, and loops until the document verdict is human or progress stops. Ends with a report and diff and asks before writing anything next to the original.
 when_to_use: Use when the user invokes /humanize-loop, or asks to humanize, de-AI or naturalize a file or text, to lower its AI score, or to make it read less like AI-generated writing. Also for a quick rewrite of pasted text.
 argument-hint: <file | "text"> [target=verdict|clean|involvement<N] [max_passes=4] [per_pass=3] [candidates=3] [mode=auto|general|academic]
 allowed-tools: Skill mcp__mesmer__score_document mcp__mesmer__score_candidate mcp__mesmer__check_invariants Read Write Edit Bash(cp *) Bash(mkdir *) Bash(diff *) Bash(mktemp *) Bash(date *)
@@ -54,7 +54,7 @@ The log cites humanizer patterns as §N and local rules by code (P1, R2, X3, W14
    | `target` | `verdict` | `verdict`: the document verdict is "human". `clean`: verdict "human" and no flagged sentences. `involvement<N`: document `ai_involvement` below N percent. |
    | `max_passes` | 4 | Full passes over the selected paragraphs. |
    | `per_pass` | 3 | Paragraphs rewritten per pass. |
-   | `candidates` | 3 | Rewrites tried per paragraph. |
+   | `candidates` | 3 | Rewrites tried per rewrite unit (section 3.3). |
    | `mode` | `auto` | `academic` for papers, theses, proposals, rebuttals and all `.tex` files; `general` otherwise. Academic mode applies `references/writing_style.md` first, then the overrides' R rules. |
 
 2. **Check the detector.** The `mcp__mesmer__*` tools must be available. If they are not,
@@ -103,10 +103,37 @@ Repeat up to `max_passes` times.
 3. **For each selected paragraph:**
    1. Read its exact text from `work` (use the `line` from the report). Also read the
       paragraph before and after, for context.
-   2. Write `candidates` rewrites of this paragraph only:
-      - Run humanizer's "How to work" steps 1-4 on the paragraph, aimed at the flagged
-        sentences, with the overrides applied. In academic mode, apply `writing_style.md`
-        and then the R rules.
+   2. **Split it into rewrite units.** A unit is a run of consecutive complete sentences;
+      a candidate rewrites one unit and nothing else.
+      - Let `n` be the paragraph's `sentences` (Mesmer's units, from the sentence detail).
+        The unit size is `k = max(3, round(n / 3))`.
+        - If `n <= 3`, the whole paragraph is one unit.
+        - Example: the 12-sentence abstract gives `k = 4`, so three units of 4 sentences.
+      - Cut the paragraph from its first sentence into units of `k` sentences. If fewer
+        than 3 sentences are left at the end, add them to the last unit (for example
+        `n = 10`, `k = 3`: units of 3, 3 and 4).
+      - Find the sentence boundaries by matching the `sentence_labels` texts against the
+        paragraph. A unit never starts or ends inside a sentence.
+      - Rewrite only units that contain a flagged sentence (in the fallback ranking:
+        every unit).
+      - Process the units **last unit first**. A rewrite of a later unit leaves the text
+        of earlier units unchanged, so the boundaries found here stay valid. The
+        paragraph's numbers before each unit are those after the previous accepted edit.
+      - Each unit holds about a third of the paragraph's sentences (never fewer than 3),
+        so a real change in one unit shows in the paragraph-level numbers used for
+        acceptance.
+
+      Steps 3-7 below run once per unit.
+   3. Write `candidates` rewrites of the unit:
+      - Each candidate is the **whole paragraph** with only the unit's sentences changed.
+        Every character outside the unit is copied exactly. Pass this whole paragraph to
+        `score_candidate`.
+      - Sentences may be merged, split or reordered **inside** the unit. No content moves
+        into or out of the unit.
+      - Run humanizer's "How to work" steps 1-4 on the unit, aimed at its flagged
+        sentences, with the overrides applied. Use the rest of the paragraph as context,
+        for example to avoid repeating an opening or a term the unit's neighbours already
+        use. In academic mode, apply `writing_style.md` and then the R rules.
       - Give each candidate a different emphasis:
         - (a) staging and inflation: state the point, cut significance and padding
           (§1-§5, §13-§17);
@@ -120,15 +147,18 @@ Repeat up to `max_passes` times.
         academic mode, also run the paragraph checklist in `writing_style.md`.
       - Show the labels of the flagged sentences, not their probabilities, while writing.
         The aim is to fix prose patterns, not to chase numbers.
-   3. Score each candidate with `score_candidate(path=work, paragraph_id, candidate_text)`.
+   4. Score each candidate with `score_candidate(path=work, paragraph_id, candidate_text)`.
       - **Reject** a candidate if `invariants.passed` is false.
       - **Reject** it if a `warnings` entry shows a real loss, for example a name that is
         genuinely gone. A name that merely moved to the start of a sentence is fine.
-      - **Reject** it if it is more than 25% longer than the original.
+      - **Reject** it if the rewritten unit is more than 25% longer than the original
+        unit.
+      - **Reject** it if any text outside the unit changed.
       - **Shorter is fine** when the removed words are staging or puffery covered by
-        humanizer (§1-§5, §13-§17) and the log names the patterns. Cutting such a paragraph by 30-50% is normal.
+        humanizer (§1-§5, §13-§17) and the log names the patterns. Cutting such a unit by
+        30-50% is normal.
       - **Reject** any candidate that drops a claim, a qualifier or a fact.
-   4. **Accept** the best remaining candidate only if all of these hold:
+   5. **Accept** the best remaining candidate only if all of these hold:
       - `delta_flagged_share <= 2` (the flagged share did not rise beyond length noise),
         and
       - `delta_involvement <= -5` or `delta_flagged_share <= -5`;
@@ -144,12 +174,17 @@ Repeat up to `max_passes` times.
       text reads. `flagged_share` is the percentage of the paragraph's characters that lie
       in flagged sentences, so it changes only when text actually moves between flagged
       and unflagged.
-   5. **If accepted:**
-      - Replace the paragraph in `work` with the Edit tool (exact old text, new text).
-      - Log the paragraph id, before and after (involvement, flagged share), the document after,
-        and a one-line explanation with rule codes.
-   6. **If not accepted:** count an attempt. After 2 failed attempts in different passes,
-      mark the paragraph **stubborn** and do not select it again.
+   6. **If accepted:**
+      - Replace the unit in `work` with the Edit tool (exact old text, new text).
+      - Log the paragraph id, the unit (sentences i-j of n), before and after
+        (involvement, flagged share), the document after, and a one-line explanation
+        with rule codes.
+   7. **If not accepted:** leave the unit as it is and go on to the next unit.
+
+   After the last unit: if no unit of the paragraph was accepted in this pass, count a
+   failed attempt for the paragraph. After 2 failed attempts in different passes, mark
+   the paragraph **stubborn** and do not select it again. Unit boundaries are recomputed
+   from the current text in every pass.
 4. **Close the pass.**
    1. Call `score_document(path=work, detail="paragraphs", max_items=500)`. This score is
       authoritative.
@@ -215,7 +250,8 @@ The report contains:
 
 1. **Summary table:** baseline and final verdict, `ai_involvement`, probabilities,
    flagged sentences, flagged paragraphs; target met (yes or no); passes run.
-2. **Accepted edits:** one row per edit with paragraph id and line, involvement before
+2. **Accepted edits:** one row per edit with paragraph id, line and unit (sentences i-j
+   of n), involvement before
    and after, flagged share before and after, and the rule-code explanation.
 3. **Stubborn paragraphs:** their worst sentence and why no candidate was accepted (score
    did not improve, or invariants failed).
@@ -249,5 +285,6 @@ Keep chat updates short. Do not paste full tool outputs into the conversation.
   document are cheapest. This is why paragraphs are processed back to front.
 - **Long calls:** tool calls longer than 2 minutes move to the background. Wait for them
   rather than re-issuing them.
-- **Main cost:** the Claude-side rewriting. A pass costs about `per_pass x candidates`
-  paragraph rewrites.
+- **Main cost:** the Claude-side rewriting. A pass costs about
+  `per_pass x units x candidates` unit rewrites. The unit rule in 3.3.2 gives at most 3
+  units per paragraph.
